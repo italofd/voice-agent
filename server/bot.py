@@ -19,6 +19,7 @@ from pipecat.services.openai.llm import OpenAILLMService
 from pipecat.services.openai.base_llm import BaseOpenAILLMService
 from pipecat.services.google.stt import GoogleSTTService
 from pipecat.services.openai.tts import OpenAITTSService
+from pipecat.services.google.tts import GoogleTTSService
 
 from pipecat.transports.websocket.fastapi import (
     FastAPIWebsocketParams,
@@ -30,11 +31,11 @@ load_dotenv(override=True)
 logger.remove(0)
 logger.add(sys.stderr, level="DEBUG")
 
-SYSTEM_INSTRUCTION = """You are Gemini, a helpful robot.
+SYSTEM_INSTRUCTION = """You are Gemini.
 
 CRITICAL RULES:
 - No punctuation except periods
-- Be direct and friendly
+
 
 """
 
@@ -62,18 +63,24 @@ async def run_bot(websocket_client):
         api_key=os.getenv("OPENAI_API_KEY"),
         model="gpt-4o-mini",
         params=BaseOpenAILLMService.InputParams(
-            temperature=0.5,             # Lower creativity = more consistent short responses
-            frequency_penalty=0.5,       # Higher penalty = avoid repetition
-            presence_penalty=0.5,        # Encourage varied vocabulary
+            temperature=0.6,             # Very low temperature for consistent short responses
+            frequency_penalty=0.5,       # Heavy penalty to avoid repetition
+            presence_penalty=0.5,        # Heavy penalty for long responses
         ),
     )
 
-    # TTS service (Text-to-Speech) - Optimized for speed
-    tts = OpenAITTSService(
-        api_key=os.getenv("OPENAI_API_KEY"),
-        model="tts-1",
-        voice="echo"
-    )
+    # Google TTS service (faster than OpenAI for short responses)
+    try:
+        tts = GoogleTTSService()
+        logger.info("Using Google TTS (faster)")
+    except Exception as e:
+        # Fallback to OpenAI if Google not configured
+        logger.warning(f"Google TTS not available ({e}), using OpenAI TTS")
+        tts = OpenAITTSService(
+            api_key=os.getenv("OPENAI_API_KEY"),
+            model="tts-1",
+            voice="echo"
+        )
 
     context = OpenAILLMContext(
         [
