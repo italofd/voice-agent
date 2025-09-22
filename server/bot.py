@@ -27,6 +27,8 @@ from pipecat.transports.websocket.fastapi import (
     FastAPIWebsocketParams,
     FastAPIWebsocketTransport,
 )
+from pipecat.observers.loggers.user_bot_latency_log_observer import UserBotLatencyLogObserver
+from pipecat.observers.loggers.llm_log_observer import LLMLogObserver
 
 load_dotenv(override=True)
 
@@ -74,17 +76,9 @@ async def run_bot(websocket_client):
     )
 
     # Google TTS service (faster than OpenAI for short responses)
-    try:
-        tts = GoogleTTSService()
-        logger.info("Using Google TTS (faster)")
-    except Exception as e:
-        # Fallback to OpenAI if Google not configured
-        logger.warning(f"Google TTS not available ({e}), using OpenAI TTS")
-        tts = OpenAITTSService(
-            api_key=os.getenv("OPENAI_API_KEY"),
-            model="tts-1",
-            voice="echo"
-        )
+    tts = GoogleTTSService()
+    logger.info("Using Google TTS (faster)")
+
 
     context = OpenAILLMContext(
         [
@@ -108,9 +102,9 @@ async def run_bot(websocket_client):
             transcript.user(),               # Capture user transcripts
             context_aggregator.user(),       # User context
             llm,                             # LLM processing
-            transcript.assistant(),          # Capture assistant text BEFORE TTS
             tts,                             # Text-to-Speech
             ws_transport.output(),           # Audio output
+            transcript.assistant(),          # Capture assistant text BEFORE TTS
             context_aggregator.assistant(),  # Assistant context
         ]
     )
@@ -122,7 +116,7 @@ async def run_bot(websocket_client):
             enable_metrics=True,        # Disable metrics to reduce overhead
             enable_usage_metrics=True,  # Disable usage metrics for speed
             allow_interruptions=True,    # Allow user interruptions for better UX
-            observers=[RTVIObserver(rtvi)],  # Add the observer here
+            observers=[RTVIObserver(rtvi), UserBotLatencyLogObserver(), LLMLogObserver()],  # Add the observer here
 
         ),
     )

@@ -4,6 +4,8 @@ interface VoiceBotHeaderProps {
 	status: ConnectionStatus;
 	showTechnicalLogs: boolean;
 	setShowTechnicalLogs: (show: boolean) => void;
+	showMetrics: boolean;
+	setShowMetrics: (show: boolean) => void;
 	isConnecting: boolean;
 	canConnect: boolean;
 	canDisconnect: boolean;
@@ -15,6 +17,8 @@ export default function VoiceBotHeader({
 	status,
 	showTechnicalLogs,
 	setShowTechnicalLogs,
+	showMetrics,
+	setShowMetrics,
 	isConnecting,
 	canConnect,
 	canDisconnect,
@@ -88,6 +92,38 @@ export default function VoiceBotHeader({
 						<div className="absolute bottom-full mb-2 left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
 							<div className="bg-black text-white text-xs rounded-lg py-2 px-3 whitespace-nowrap shadow-lg">
 								Technical Logs
+							</div>
+						</div>
+					</div>
+
+					{/* Metrics Toggle */}
+					<div className="relative group">
+						<button
+							onClick={() => setShowMetrics(!showMetrics)}
+							className={`p-3 rounded-xl transition-all duration-200 ${
+								showMetrics
+									? "bg-indigo-100 dark:bg-indigo-900 text-indigo-600 dark:text-indigo-400"
+									: "hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-400"
+							}`}
+							title="Toggle Metrics"
+						>
+							<svg
+								className="w-5 h-5"
+								fill="none"
+								stroke="currentColor"
+								viewBox="0 0 24 24"
+							>
+								<path
+									strokeLinecap="round"
+									strokeLinejoin="round"
+									strokeWidth={2}
+									d="M11 11V7a4 4 0 10-4 4h4zm0 0v4a4 4 0 104-4h-4z"
+								/>
+							</svg>
+						</button>
+						<div className="absolute bottom-full mb-2 left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+							<div className="bg-black text-white text-xs rounded-lg py-2 px-3 whitespace-nowrap shadow-lg">
+								Metrics
 							</div>
 						</div>
 					</div>

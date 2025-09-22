@@ -7,11 +7,17 @@ import {
 	PipecatClientAudio,
 } from "@pipecat-ai/client-react";
 import { WebSocketTransport } from "@pipecat-ai/websocket-transport";
-import { ConnectionStatus, ConversationMessage } from "./types";
+import {
+	ConnectionStatus,
+	ConversationMessage,
+	MetricsEvent,
+	RtviMetricsData,
+} from "./types";
 import VoiceBotHeader from "./VoiceBotHeader";
 import ErrorMessage from "./ErrorMessage";
 import ConversationSection from "./ConversationSection";
 import TechnicalLogsSection from "./TechnicalLogsSection";
+import MetricsSection from "./MetricsSection";
 
 export default function Pipecat() {
 	return (
@@ -31,9 +37,12 @@ function VoiceBot() {
 	const [client, setClient] = useState<PipecatClient | null>(null);
 	const [isListening, setIsListening] = useState(false);
 	const [showTechnicalLogs, setShowTechnicalLogs] = useState(false);
+	const [showMetrics, setShowMetrics] = useState(false);
 	const debugLogRef = useRef<HTMLDivElement>(null);
 	const conversationRef = useRef<HTMLDivElement>(null);
 	const clientRef = useRef<PipecatClient | null>(null);
+	const metricsRef = useRef<HTMLDivElement>(null);
+	const [metricsEvents, setMetricsEvents] = useState<MetricsEvent[]>([]);
 
 	// Logging function for technical logs
 	const log = useCallback((message: string) => {
@@ -70,6 +79,12 @@ function VoiceBot() {
 		}
 	}, [conversationMessages]);
 
+	useEffect(() => {
+		if (metricsRef.current) {
+			metricsRef.current.scrollTop = metricsRef.current.scrollHeight;
+		}
+	}, [metricsEvents]);
+
 	// Initialize client with proper callbacks
 	const initializeClient = useCallback(() => {
 		if (clientRef.current) {
@@ -93,6 +108,7 @@ function VoiceBot() {
 					setIsConnecting(false);
 					setIsListening(false);
 					log("Disconnected from voice bot");
+					setMetricsEvents([]);
 					// Clear the client reference on disconnect
 					clientRef.current = null;
 					setClient(null);
@@ -120,18 +136,28 @@ function VoiceBot() {
 				},
 				onBotLlmText: (data) => {
 					console.log("🤖 Bot (LLM):", data);
+					log(`LLM: ${typeof data === "string" ? data : JSON.stringify(data)}`);
 				},
 				onBotTtsText: (data) => {
 					console.log("🤖 Bot (TTS):", data);
+					log(`TTS: ${typeof data === "string" ? data : JSON.stringify(data)}`);
 				},
 				onMetrics: (data) => {
 					console.log("🤖 Bot (Metrics):", data);
+					const evt: MetricsEvent = {
+						id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+						timestamp: new Date(),
+						data: data as RtviMetricsData,
+					};
+					setMetricsEvents((prev) => [...prev.slice(-199), evt]);
 				},
 				onBotTtsStarted: () => {
 					console.log("🤖 Bot (TTS started):");
+					log("TTS started");
 				},
 				onBotTtsStopped: () => {
 					console.log("🤖 Bot (TTS stopped):");
+					log("TTS stopped");
 				},
 				onMessageError: (error) => {
 					console.error("💥 Message error:", error);
@@ -213,6 +239,7 @@ function VoiceBot() {
 			setIsListening(false);
 			clientRef.current = null;
 			setClient(null);
+			setMetricsEvents([]);
 		}
 	}, [log]);
 
@@ -238,6 +265,8 @@ function VoiceBot() {
 					status={status}
 					showTechnicalLogs={showTechnicalLogs}
 					setShowTechnicalLogs={setShowTechnicalLogs}
+					showMetrics={showMetrics}
+					setShowMetrics={setShowMetrics}
 					isConnecting={isConnecting}
 					canConnect={canConnect}
 					canDisconnect={canDisconnect}
@@ -261,6 +290,14 @@ function VoiceBot() {
 						status={status}
 						debugLogs={debugLogs}
 						debugLogRef={debugLogRef}
+					/>
+				)}
+
+				{showMetrics && (
+					<MetricsSection
+						status={status}
+						metrics={metricsEvents}
+						metricsRef={metricsRef}
 					/>
 				)}
 			</div>

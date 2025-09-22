@@ -15,28 +15,18 @@ export default function ConversationSection({
 }: ConversationSectionProps) {
 	return (
 		<div className="flex-1 bg-white/90 dark:bg-gray-900/90 backdrop-blur-xl rounded-3xl border border-white/20 dark:border-gray-800/20 shadow-2xl flex flex-col min-h-0">
-			<div className="border-b border-gray-200/50 dark:border-gray-700/50 p-6">
+			<div className="border-b border-gray-200/50 dark:border-gray-700/50 p-6 flex">
 				<h2 className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
 					💬 Conversation
 				</h2>
-				{isConnected && (
-					<p className="text-sm text-gray-600 dark:text-gray-400 mt-2">
-						Start speaking - your voice agent is listening!
-					</p>
+				{isConnected && isListening && (
+					<div className="border-gray-200/50 dark:border-gray-700/50 border-collapse flex items-center text-sm font-semibold text-blue-600 dark:text-blue-400 animate-pulse h-full ml-4">
+						🎤 Listening...
+					</div>
 				)}
 			</div>
 
 			{/* Audio Visualizer */}
-			{isConnected && (
-				<div className="border-b border-gray-200/50 dark:border-gray-700/50 p-6">
-					<div className="flex items-center justify-center relative"></div>
-					{isListening && (
-						<div className="text-center mt-3 text-sm font-semibold text-blue-600 dark:text-blue-400 animate-pulse">
-							🎤 Listening...
-						</div>
-					)}
-				</div>
-			)}
 
 			<div className="flex-1 p-6 min-h-0">
 				<div
