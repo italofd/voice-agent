@@ -9,7 +9,8 @@ import sys
 from dotenv import load_dotenv
 from loguru import logger
 from pipecat.audio.vad.silero import SileroVADAnalyzer
-from pipecat.frames.frames import LLMRunFrame
+from pipecat.frames.frames import LLMRunFrame, TranscriptionMessage, TranscriptionUpdateFrame
+from pipecat.processors.transcript_processor import TranscriptProcessor
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.runner import PipelineRunner
 from pipecat.pipeline.task import PipelineParams, PipelineTask
@@ -20,6 +21,7 @@ from pipecat.services.openai.base_llm import BaseOpenAILLMService
 from pipecat.services.google.stt import GoogleSTTService
 from pipecat.services.openai.tts import OpenAITTSService
 from pipecat.services.google.tts import GoogleTTSService
+from pipecat.processors.frameworks.rtvi import RTVIConfig, RTVIObserver, RTVIProcessor
 
 from pipecat.transports.websocket.fastapi import (
     FastAPIWebsocketParams,
@@ -43,6 +45,8 @@ CRITICAL RULES:
 async def run_bot(websocket_client):
     # Use default VAD settings (SileroVADAnalyzer doesn't have InputParams)
     vad = SileroVADAnalyzer()
+    rtvi = RTVIProcessor(config=RTVIConfig(config=[]))
+
 
     ws_transport = FastAPIWebsocketTransport(
         websocket=websocket_client,
@@ -90,17 +94,24 @@ async def run_bot(websocket_client):
             }
         ],
     )
+
+        # Create transcript processor and handler
+    transcript = TranscriptProcessor()
+
     context_aggregator = llm.create_context_aggregator(context)
 
     pipeline = Pipeline(
         [
-            ws_transport.input(),           # Audio input
-            stt,                           # Speech-to-Text
-            context_aggregator.user(),     # User context
-            llm,                          # LLM processing
-            tts,                          # Text-to-Speech
-            ws_transport.output(),        # Audio output
-            context_aggregator.assistant(), # Assistant context
+            ws_transport.input(),            # Audio input
+            rtvi,
+            stt,                             # Speech-to-Text
+            transcript.user(),               # Capture user transcripts
+            context_aggregator.user(),       # User context
+            llm,                             # LLM processing
+            transcript.assistant(),          # Capture assistant text BEFORE TTS
+            tts,                             # Text-to-Speech
+            ws_transport.output(),           # Audio output
+            context_aggregator.assistant(),  # Assistant context
         ]
     )
 
@@ -108,9 +119,11 @@ async def run_bot(websocket_client):
     task = PipelineTask(
         pipeline,
         params=PipelineParams(
-            enable_metrics=False,        # Disable metrics to reduce overhead
-            enable_usage_metrics=False,  # Disable usage metrics for speed
+            enable_metrics=True,        # Disable metrics to reduce overhead
+            enable_usage_metrics=True,  # Disable usage metrics for speed
             allow_interruptions=True,    # Allow user interruptions for better UX
+            observers=[RTVIObserver(rtvi)],  # Add the observer here
+
         ),
     )
 
@@ -118,12 +131,20 @@ async def run_bot(websocket_client):
     async def on_client_connected(transport, client):
         logger.info("Pipecat Client connected")
         # Kick off the conversation with a greeting
+        await rtvi.set_bot_ready()
         await task.queue_frames([LLMRunFrame()])
+
 
     @ws_transport.event_handler("on_client_disconnected")
     async def on_client_disconnected(transport, client):
         logger.info("Pipecat Client disconnected")
         await task.cancel()
+
+    @transcript.event_handler("on_transcript_update")
+    async def on_transcript_update(processor, frame):
+        """Handle transcript updates and send to frontend via websocket"""
+        for message in frame.messages:
+            logger.info(f"Transcript update: {message.content}")
 
     runner = PipelineRunner(handle_sigint=False)
 
