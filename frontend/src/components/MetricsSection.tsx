@@ -6,7 +6,6 @@ import {
 	RtviMetricsData,
 } from "./types";
 import TimelineCharts from "./TimelineCharts";
-import { generateMockMetricsData } from "./MockDataGenerator";
 
 interface MetricsSectionProps {
 	status: ConnectionStatus;
@@ -55,18 +54,15 @@ export default function MetricsSection({
 	metricsRef,
 }: MetricsSectionProps) {
 	const [showTimeline, setShowTimeline] = useState(false);
-	const [demoMode, setDemoMode] = useState(false);
-	const [mockMetrics] = useState(() => generateMockMetricsData());
-	
-	// Use mock data if demo mode is on and no real metrics exist
-	const displayMetrics = demoMode && metrics.length === 0 ? mockMetrics : metrics;
-	const aggregated = aggregateMetrics(displayMetrics);
+	const aggregated = aggregateMetrics(metrics);
 
 	const metricTypes = Object.keys(aggregated);
 
 	return (
 		<div
-			className={`${showTimeline ? 'w-[800px]' : 'w-96'} bg-white/90 dark:bg-gray-900/90 backdrop-blur-xl rounded-3xl border-2 shadow-2xl flex flex-col min-h-0 transition-all duration-300 ${
+			className={`${
+				showTimeline ? "w-[800px]" : "w-96"
+			} bg-white/90 dark:bg-gray-900/90 backdrop-blur-xl rounded-3xl border-2 shadow-2xl flex flex-col min-h-0 transition-all duration-300 ${
 				status === "connected"
 					? "border-indigo-300 dark:border-indigo-700"
 					: status === "error"
@@ -91,43 +87,24 @@ export default function MetricsSection({
 							/>
 						</svg>
 						Metrics
-						{demoMode && metrics.length === 0 && (
-							<span className="ml-2 px-2 py-1 text-xs bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200 rounded">
-								Demo
-							</span>
-						)}
 					</h2>
-					<div className="flex gap-2">
-						{metrics.length === 0 && (
-							<button
-								onClick={() => setDemoMode(!demoMode)}
-								className={`px-3 py-1 rounded-lg text-sm font-medium transition-colors ${
-									demoMode
-										? "bg-yellow-100 dark:bg-yellow-900 text-yellow-700 dark:text-yellow-300"
-										: "bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"
-								}`}
-							>
-								{demoMode ? "Hide Demo" : "Demo"}
-							</button>
-						)}
-						<button
-							onClick={() => setShowTimeline(!showTimeline)}
-							className={`px-3 py-1 rounded-lg text-sm font-medium transition-colors ${
-								showTimeline
-									? "bg-indigo-100 dark:bg-indigo-900 text-indigo-700 dark:text-indigo-300"
-									: "bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"
-							}`}
-						>
-							{showTimeline ? "Raw Data" : "Timeline"}
-						</button>
-					</div>
+					<button
+						onClick={() => setShowTimeline(!showTimeline)}
+						className={`px-3 py-1 rounded-lg text-sm font-medium transition-colors ${
+							showTimeline
+								? "bg-indigo-100 dark:bg-indigo-900 text-indigo-700 dark:text-indigo-300"
+								: "bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"
+						}`}
+					>
+						{showTimeline ? "Raw Data" : "Timeline"}
+					</button>
 				</div>
 			</div>
 
 			<div className="flex-1 p-6 min-h-0">
 				{showTimeline ? (
 					<div className="h-full overflow-y-auto scrollbar-thin">
-						<TimelineCharts metrics={displayMetrics} />
+						<TimelineCharts metrics={metrics} />
 					</div>
 				) : (
 					<div
