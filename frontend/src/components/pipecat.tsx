@@ -108,6 +108,8 @@ function VoiceBot() {
 					setIsConnecting(false);
 					setIsListening(false);
 					log("Disconnected from voice bot");
+					setConversationMessages([]);
+					setDebugLogs([]);
 					setMetricsEvents([]);
 					// Clear the client reference on disconnect
 					clientRef.current = null;
@@ -164,6 +166,10 @@ function VoiceBot() {
 					log(`Message error: ${JSON.stringify(error)}`);
 					setStatus("error");
 					setIsConnecting(false);
+					setIsListening(false);
+					setConversationMessages([]);
+					setDebugLogs([]);
+					setMetricsEvents([]);
 				},
 				onError: (error) => {
 					console.error("💥 Connection error:", error);
@@ -171,6 +177,9 @@ function VoiceBot() {
 					setStatus("error");
 					setIsConnecting(false);
 					setIsListening(false);
+					setConversationMessages([]);
+					setDebugLogs([]);
+					setMetricsEvents([]);
 					// Clear client on error to allow reconnection
 					clientRef.current = null;
 					setClient(null);
@@ -213,6 +222,10 @@ function VoiceBot() {
 			log(`Connection failed: ${errorMessage}`);
 			setStatus("error");
 			setIsConnecting(false);
+			setIsListening(false);
+			setConversationMessages([]);
+			setDebugLogs([]);
+			setMetricsEvents([]);
 			// Clear client on connection failure
 			clientRef.current = null;
 			setClient(null);
@@ -239,6 +252,8 @@ function VoiceBot() {
 			setIsListening(false);
 			clientRef.current = null;
 			setClient(null);
+			setConversationMessages([]);
+			setDebugLogs([]);
 			setMetricsEvents([]);
 		}
 	}, [log]);
