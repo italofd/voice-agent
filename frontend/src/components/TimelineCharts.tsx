@@ -62,7 +62,6 @@ function processMetricsForTimeline(events: MetricsEvent[]): ProcessedMetrics {
 
 			for (const entry of entries) {
 				const processor = normalizeProcessor(entry.processor);
-				console.log("EVA01", processor);
 				if (metricType === "ttfb") {
 					// TTFB: Create unified timeline structure for proper line connections
 					if (!ttfbTimelineMap.has(time)) {
@@ -162,8 +161,6 @@ function getProcessorColor(processor: string, index: number): string {
 export default function TimelineCharts({ metrics }: TimelineChartsProps) {
 	const processedMetrics = processMetricsForTimeline(metrics);
 
-	console.log("EVA02", processedMetrics);
-
 	if (metrics.length === 0) {
 		return (
 			<div className="text-gray-500 dark:text-gray-400 text-center py-8">
@@ -222,9 +219,7 @@ export default function TimelineCharts({ metrics }: TimelineChartsProps) {
 									formatter={(value: any, name: string) => [`${value}ms`, name]}
 								/>
 								<Legend />
-								{ttfbProcessors.map((processor, index) => {
-									console.log("EVA03", processor);
-									return (
+								{ttfbProcessors.map((processor, index) => (
 										<Line
 											key={processor}
 											type="monotone"
@@ -232,10 +227,9 @@ export default function TimelineCharts({ metrics }: TimelineChartsProps) {
 											stroke={getProcessorColor(processor, index)}
 											strokeWidth={2}
 											dot={{ r: 4 }}
-											name={processor}
-										/>
-									);
-								})}
+										name={processor}
+									/>
+								))}
 							</LineChart>
 						</ResponsiveContainer>
 					</div>
