@@ -34,15 +34,10 @@ function normalizeProcessor(name: unknown): string {
 }
 
 function processMetricsForTimeline(events: MetricsEvent[]): ProcessedMetrics {
-	// Group events by timestamp to create unified timeline data points
-	const timelineMap = new Map<number, {
-		timestamp: string;
-		time: number;
-		ttfb: { [processor: string]: number };
-		processing: { [processor: string]: number };
-		tokens: { [processor: string]: { completion: number; prompt: number; total: number } };
-		characters: { [processor: string]: number };
-	}>();
+	const ttfbData: TimelineDataPoint[] = [];
+	const processingData: TimelineDataPoint[] = [];
+	const tokensData: TimelineDataPoint[] = [];
+	const charactersData: TimelineDataPoint[] = [];
 
 	// Cumulative counters for tokens and characters
 	const cumulativeTokens: {
@@ -50,25 +45,10 @@ function processMetricsForTimeline(events: MetricsEvent[]): ProcessedMetrics {
 	} = {};
 	const cumulativeCharacters: { [processor: string]: number } = {};
 
-	// First pass: Process all events and group by timestamp
 	for (const event of events) {
 		const data = event.data as RtviMetricsData;
 		const timestamp = event.timestamp.toISOString();
 		const time = event.timestamp.getTime();
-
-		// Initialize timeline entry if not exists
-		if (!timelineMap.has(time)) {
-			timelineMap.set(time, {
-				timestamp,
-				time,
-				ttfb: {},
-				processing: {},
-				tokens: {},
-				characters: {},
-			});
-		}
-
-		const timelineEntry = timelineMap.get(time)!;
 
 		// Process each metric type
 		for (const metricType of Object.keys(data)) {
@@ -81,123 +61,77 @@ function processMetricsForTimeline(events: MetricsEvent[]): ProcessedMetrics {
 				const processor = normalizeProcessor(entry.processor);
 
 				if (metricType === "ttfb") {
-					timelineEntry.ttfb[processor] = entry.value;
+					// TTFB: per-event timeline (value = time spent)
+					ttfbData.push({
+						timestamp,
+						time,
+						[processor]: entry.value,
+						processor,
+						value: entry.value,
+					});
 				} else if (metricType === "processing") {
-					timelineEntry.processing[processor] = entry.value;
+					// Processing: per-event timeline (value = time spent)
+					processingData.push({
+						timestamp,
+						time,
+						[processor]: entry.value,
+						processor,
+						value: entry.value,
+					});
 				} else if (metricType === "tokens") {
-					// Initialize cumulative counters if not exists
+					// Tokens: cumulative data
 					if (!cumulativeTokens[processor]) {
-						cumulativeTokens[processor] = { completion: 0, prompt: 0, total: 0 };
+						cumulativeTokens[processor] = {
+							completion: 0,
+							prompt: 0,
+							total: 0,
+						};
 					}
 
-					// Extract token types from entry
+					// Extract token types from entry (assuming they exist in the data)
 					const completionTokens = (entry as any).completion_tokens || 0;
 					const promptTokens = (entry as any).prompt_tokens || 0;
 					const totalTokens = (entry as any).total_tokens || entry.value || 0;
 
-					// Update cumulative counters
 					cumulativeTokens[processor].completion += completionTokens;
 					cumulativeTokens[processor].prompt += promptTokens;
 					cumulativeTokens[processor].total += totalTokens;
 
-					// Store in timeline entry
-					timelineEntry.tokens[processor] = { ...cumulativeTokens[processor] };
+					tokensData.push({
+						timestamp,
+						time,
+						processor,
+						[`${processor}_completion`]: cumulativeTokens[processor].completion,
+						[`${processor}_prompt`]: cumulativeTokens[processor].prompt,
+						[`${processor}_total`]: cumulativeTokens[processor].total,
+					});
 				} else if (metricType === "characters") {
-					// Initialize cumulative counter if not exists
+					// Characters: cumulative data
 					if (!cumulativeCharacters[processor]) {
 						cumulativeCharacters[processor] = 0;
 					}
 
-					// Update cumulative counter
 					cumulativeCharacters[processor] += entry.value;
 
-					// Store in timeline entry
-					timelineEntry.characters[processor] = cumulativeCharacters[processor];
+					charactersData.push({
+						timestamp,
+						time,
+						processor,
+						[processor]: cumulativeCharacters[processor],
+						value: cumulativeCharacters[processor],
+					});
 				}
 			}
 		}
 	}
 
-	// Second pass: Convert timeline map to arrays with unified structure
-	const sortedEntries = Array.from(timelineMap.entries())
-		.sort(([a], [b]) => a - b)
-		.map(([, entry]) => entry);
-
-	// Get all unique processors for each metric type
-	const allProcessors = {
-		ttfb: new Set<string>(),
-		processing: new Set<string>(),
-		tokens: new Set<string>(),
-		characters: new Set<string>(),
-	};
-
-	// Collect all processors
-	for (const entry of sortedEntries) {
-		Object.keys(entry.ttfb).forEach(p => allProcessors.ttfb.add(p));
-		Object.keys(entry.processing).forEach(p => allProcessors.processing.add(p));
-		Object.keys(entry.tokens).forEach(p => allProcessors.tokens.add(p));
-		Object.keys(entry.characters).forEach(p => allProcessors.characters.add(p));
-	}
-
-	// Create unified data arrays
-	const ttfbData: TimelineDataPoint[] = [];
-	const processingData: TimelineDataPoint[] = [];
-	const tokensData: TimelineDataPoint[] = [];
-	const charactersData: TimelineDataPoint[] = [];
-
-	for (const entry of sortedEntries) {
-		// TTFB data
-		if (Object.keys(entry.ttfb).length > 0) {
-			const ttfbPoint: TimelineDataPoint = {
-				timestamp: entry.timestamp,
-				time: entry.time,
-			};
-			allProcessors.ttfb.forEach(processor => {
-				ttfbPoint[processor] = entry.ttfb[processor] ?? null;
-			});
-			ttfbData.push(ttfbPoint);
-		}
-
-		// Processing data
-		if (Object.keys(entry.processing).length > 0) {
-			const processingPoint: TimelineDataPoint = {
-				timestamp: entry.timestamp,
-				time: entry.time,
-			};
-			allProcessors.processing.forEach(processor => {
-				processingPoint[processor] = entry.processing[processor] ?? null;
-			});
-			processingData.push(processingPoint);
-		}
-
-		// Tokens data
-		if (Object.keys(entry.tokens).length > 0) {
-			const tokensPoint: TimelineDataPoint = {
-				timestamp: entry.timestamp,
-				time: entry.time,
-			};
-			allProcessors.tokens.forEach(processor => {
-				if (entry.tokens[processor]) {
-					tokensPoint[`${processor}_completion`] = entry.tokens[processor].completion;
-					tokensPoint[`${processor}_prompt`] = entry.tokens[processor].prompt;
-					tokensPoint[`${processor}_total`] = entry.tokens[processor].total;
-				}
-			});
-			tokensData.push(tokensPoint);
-		}
-
-		// Characters data
-		if (Object.keys(entry.characters).length > 0) {
-			const charactersPoint: TimelineDataPoint = {
-				timestamp: entry.timestamp,
-				time: entry.time,
-			};
-			allProcessors.characters.forEach(processor => {
-				charactersPoint[processor] = entry.characters[processor] ?? null;
-			});
-			charactersData.push(charactersPoint);
-		}
-	}
+	// Sort all data by timestamp
+	const sortByTime = (a: TimelineDataPoint, b: TimelineDataPoint) =>
+		a.time - b.time;
+	ttfbData.sort(sortByTime);
+	processingData.sort(sortByTime);
+	tokensData.sort(sortByTime);
+	charactersData.sort(sortByTime);
 
 	return { ttfbData, processingData, tokensData, charactersData };
 }
@@ -237,6 +171,7 @@ export default function TimelineCharts({ metrics }: TimelineChartsProps) {
 	const ttfbProcessors = Array.from(
 		new Set(processedMetrics.ttfbData.map((d) => d.processor))
 	);
+
 	const processingProcessors = Array.from(
 		new Set(processedMetrics.processingData.map((d) => d.processor))
 	);
@@ -255,7 +190,7 @@ export default function TimelineCharts({ metrics }: TimelineChartsProps) {
 					<h3 className="text-lg font-bold text-gray-800 dark:text-gray-200 mb-4">
 						Time to First Byte (TTFB) Timeline
 					</h3>
-					<div className="h-64">
+					<div className="h-[333px]">
 						<ResponsiveContainer width="100%" height="100%">
 							<LineChart data={processedMetrics.ttfbData}>
 								<CartesianGrid strokeDasharray="3 3" />
@@ -286,7 +221,6 @@ export default function TimelineCharts({ metrics }: TimelineChartsProps) {
 										stroke={getProcessorColor(processor, index)}
 										strokeWidth={2}
 										dot={{ r: 4 }}
-										connectNulls={false}
 										name={processor}
 									/>
 								))}
@@ -302,7 +236,7 @@ export default function TimelineCharts({ metrics }: TimelineChartsProps) {
 					<h3 className="text-lg font-bold text-gray-800 dark:text-gray-200 mb-4">
 						Processing Time Timeline (LLM + TTS)
 					</h3>
-					<div className="h-64">
+					<div className="h-[333px]">
 						<ResponsiveContainer width="100%" height="100%">
 							<LineChart data={processedMetrics.processingData}>
 								<CartesianGrid strokeDasharray="3 3" />
@@ -333,7 +267,6 @@ export default function TimelineCharts({ metrics }: TimelineChartsProps) {
 										stroke={getProcessorColor(processor, index)}
 										strokeWidth={2}
 										dot={{ r: 4 }}
-										connectNulls={false}
 										name={processor}
 									/>
 								))}
@@ -349,7 +282,7 @@ export default function TimelineCharts({ metrics }: TimelineChartsProps) {
 					<h3 className="text-lg font-bold text-gray-800 dark:text-gray-200 mb-4">
 						Cumulative Tokens Timeline
 					</h3>
-					<div className="h-64">
+					<div className="h-[333px]">
 						<ResponsiveContainer width="100%" height="100%">
 							<LineChart data={processedMetrics.tokensData}>
 								<CartesianGrid strokeDasharray="3 3" />
@@ -387,7 +320,6 @@ export default function TimelineCharts({ metrics }: TimelineChartsProps) {
 										strokeWidth={2}
 										strokeDasharray="5 5"
 										dot={{ r: 3 }}
-										connectNulls={true}
 										name={`${processor} (Completion)`}
 									/>,
 									<Line
@@ -401,7 +333,6 @@ export default function TimelineCharts({ metrics }: TimelineChartsProps) {
 										strokeWidth={2}
 										strokeDasharray="10 5"
 										dot={{ r: 3 }}
-										connectNulls={true}
 										name={`${processor} (Prompt)`}
 									/>,
 									<Line
@@ -414,7 +345,6 @@ export default function TimelineCharts({ metrics }: TimelineChartsProps) {
 										)}
 										strokeWidth={3}
 										dot={{ r: 4 }}
-										connectNulls={true}
 										name={`${processor} (Total)`}
 									/>,
 								])}
@@ -430,7 +360,7 @@ export default function TimelineCharts({ metrics }: TimelineChartsProps) {
 					<h3 className="text-lg font-bold text-gray-800 dark:text-gray-200 mb-4">
 						Cumulative Characters Timeline
 					</h3>
-					<div className="h-64">
+					<div className="h-[333px]">
 						<ResponsiveContainer width="100%" height="100%">
 							<LineChart data={processedMetrics.charactersData}>
 								<CartesianGrid strokeDasharray="3 3" />
@@ -464,7 +394,6 @@ export default function TimelineCharts({ metrics }: TimelineChartsProps) {
 										stroke={getProcessorColor(processor, index)}
 										strokeWidth={2}
 										dot={{ r: 4 }}
-										connectNulls={true}
 										name={processor}
 									/>
 								))}
