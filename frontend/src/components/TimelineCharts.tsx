@@ -23,6 +23,7 @@ interface TimelineDataPoint {
 
 interface ProcessedMetrics {
 	ttfbData: TimelineDataPoint[];
+	ttfbProcessors: string[];
 	processingData: TimelineDataPoint[];
 	tokensData: TimelineDataPoint[];
 	charactersData: TimelineDataPoint[];
@@ -34,13 +35,14 @@ function normalizeProcessor(name: unknown): string {
 }
 
 function processMetricsForTimeline(events: MetricsEvent[]): ProcessedMetrics {
-	const ttfbData: TimelineDataPoint[] = [];
+	const ttfbByTimestamp = new Map<
+		number,
+		{ timestamp: string; values: Record<string, number> }
+	>();
 	const processingData: TimelineDataPoint[] = [];
 	const tokensData: TimelineDataPoint[] = [];
 	const charactersData: TimelineDataPoint[] = [];
-
-	// For TTFB, we need a unified timeline to connect lines properly
-	const ttfbTimelineMap = new Map<number, { timestamp: string; time: number; [processor: string]: any }>();
+	const ttfbProcessors = new Set<string>();
 
 	// Cumulative counters for tokens and characters
 	const cumulativeTokens: {
@@ -63,11 +65,13 @@ function processMetricsForTimeline(events: MetricsEvent[]): ProcessedMetrics {
 			for (const entry of entries) {
 				const processor = normalizeProcessor(entry.processor);
 				if (metricType === "ttfb") {
-					// TTFB: Create unified timeline structure for proper line connections
-					if (!ttfbTimelineMap.has(time)) {
-						ttfbTimelineMap.set(time, { timestamp, time });
+					let bucket = ttfbByTimestamp.get(time);
+					if (!bucket) {
+						bucket = { timestamp, values: {} };
+						ttfbByTimestamp.set(time, bucket);
 					}
-					ttfbTimelineMap.get(time)![processor] = entry.value;
+					bucket.values[processor] = entry.value;
+					ttfbProcessors.add(processor);
 				} else if (metricType === "processing") {
 					// Processing: per-event timeline (value = time spent)
 					processingData.push({
@@ -124,18 +128,36 @@ function processMetricsForTimeline(events: MetricsEvent[]): ProcessedMetrics {
 		}
 	}
 
-	// Convert TTFB timeline map to array and sort
-	const ttfbDataFromMap = Array.from(ttfbTimelineMap.values()).sort((a, b) => a.time - b.time);
-	ttfbData.push(...ttfbDataFromMap);
+	// Build TTFB data points with sequential readings per processor
+	const ttfbData: TimelineDataPoint[] = [];
+	for (const [time, bucket] of ttfbByTimestamp.entries()) {
+		for (const processor of ttfbProcessors) {
+			if (bucket.values[processor] !== undefined) {
+				ttfbData.push({
+					timestamp: bucket.timestamp,
+					time,
+					processor,
+					value: bucket.values[processor],
+				});
+			}
+		}
+	}
 
 	// Sort all data by timestamp
 	const sortByTime = (a: TimelineDataPoint, b: TimelineDataPoint) =>
 		a.time - b.time;
+	ttfbData.sort(sortByTime);
 	processingData.sort(sortByTime);
 	tokensData.sort(sortByTime);
 	charactersData.sort(sortByTime);
 
-	return { ttfbData, processingData, tokensData, charactersData };
+	return {
+		ttfbData,
+		ttfbProcessors: Array.from(ttfbProcessors),
+		processingData,
+		tokensData,
+		charactersData,
+	};
 }
 
 function formatTimestamp(timestamp: string): string {
@@ -170,13 +192,7 @@ export default function TimelineCharts({ metrics }: TimelineChartsProps) {
 	}
 
 	// Get unique processors for each chart type
-	const ttfbProcessors = Array.from(
-		new Set(
-			processedMetrics.ttfbData.flatMap((d) =>
-				Object.keys(d).filter((key) => key !== "timestamp" && key !== "time")
-			)
-		)
-	);
+	const ttfbProcessors = processedMetrics.ttfbProcessors;
 
 	const processingProcessors = Array.from(
 		new Set(processedMetrics.processingData.map((d) => d.processor))
@@ -211,6 +227,7 @@ export default function TimelineCharts({ metrics }: TimelineChartsProps) {
 										angle: -90,
 										position: "insideLeft",
 									}}
+									allowDecimals={true}
 								/>
 								<Tooltip
 									labelFormatter={(label) =>
@@ -220,13 +237,16 @@ export default function TimelineCharts({ metrics }: TimelineChartsProps) {
 								/>
 								<Legend />
 								{ttfbProcessors.map((processor, index) => (
-										<Line
-											key={processor}
-											type="monotone"
-											dataKey={processor}
-											stroke={getProcessorColor(processor, index)}
-											strokeWidth={2}
-											dot={{ r: 4 }}
+									<Line
+										key={processor}
+										type="monotone"
+										dataKey={(entry) =>
+											entry.processor === processor ? entry.value : null
+										}
+										stroke={getProcessorColor(processor, index)}
+										strokeWidth={2}
+										dot={{ r: 4 }}
+										connectNulls
 										name={processor}
 									/>
 								))}
@@ -274,6 +294,7 @@ export default function TimelineCharts({ metrics }: TimelineChartsProps) {
 										strokeWidth={2}
 										dot={{ r: 4 }}
 										name={processor}
+										connectNulls
 									/>
 								))}
 							</LineChart>
